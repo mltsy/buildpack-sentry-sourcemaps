@@ -34,15 +34,19 @@ When using webpack, babel, or uglifyJS, you need to build the sourcemaps before 
 },
 ```
 
-### Next.js (version 5+)
+### Next.js (version 5.1+)
 
 ```js
 // next.config.js
 
 module.exports = {
   webpack(config, { dev }) {
-    if (!dev) {
-      config.devtool = 'source-map';
+    config.devtool = 'source-map';
+    for (const options of config.plugins) {
+      if (options['constructor']['name'] === 'UglifyJsPlugin') {
+        options.options.sourceMap = true;
+        break;
+      }
     }
 
     return config;
