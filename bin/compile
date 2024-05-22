@@ -41,6 +41,28 @@ curl -sSf "${API}/releases/${SOURCE_VERSION}/files/" \
      -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
      > "$files"
 
+# Function to update a file in Sentry
+update_file() {
+    local map=$1
+    local name=$2
+    local file_id=$3
+
+    echo "       Updating ${map} on Sentry"
+    curl -sSf "${API}/releases/${SOURCE_VERSION}/files/${file_id}/" \
+         -X DELETE \
+         -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
+         >/dev/null
+    curl -sSf "${API}/releases/${SOURCE_VERSION}/files/" \
+         -X POST \
+         -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
+         -F file=@"${map}" \
+         -F name="${name}" \
+         >/dev/null || {
+             status=$?
+             echo "       Failed to upload ${map}, status code: $status"
+         }
+}
+
 # Upload the sourcemaps
 cd "${build}/"
 
@@ -65,21 +87,18 @@ for map in $(find . -name '*.js.map' -not -path './node_modules/*' -not -path '.
              -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
              -F file=@"${map}" \
              -F name="${name}" \
-             >/dev/null
+             >/dev/null || {
+                 status=$?
+                 if [ $status -eq 22 ]; then
+                     echo "       409 Conflict for ${map}, performing update."
+                     update_file "${map}" "${name}" "${res[0]}"
+                 else
+                     echo "       Failed to upload ${map}, status code: $status"
+                 fi
+             }
 
     elif [[ "${res[1]}" != "${sum}" ]]; then
-        echo "       Updating ${map} on Sentry"
-        curl -sSf "${API}/releases/${SOURCE_VERSION}/files/${res[0]}/" \
-             -X DELETE \
-             -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
-             >/dev/null
-        curl -sSf "${API}/releases/${SOURCE_VERSION}/files/" \
-             -X POST \
-             -H "Authorization: Bearer ${SENTRY_AUTH_TOKEN}" \
-             -F file=@"${map}" \
-             -F name="${name}" \
-             >/dev/null
-
+        update_file "${map}" "${name}" "${res[0]}"
     else
         echo "       ${map} is up-to-date"
     fi
